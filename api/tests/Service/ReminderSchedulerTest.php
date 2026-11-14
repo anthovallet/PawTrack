@@ -27,6 +27,7 @@ class ReminderSchedulerTest extends TestCase
         );
     }
 
+    /** Une échéance neuve reçoit un rappel par décalage (J-7, J-1). */
     public function testCreatesOneReminderPerOffset(): void
     {
         // --- Arrange : on met en place l'état de départ ---
@@ -40,6 +41,7 @@ class ReminderSchedulerTest extends TestCase
         $this->assertCount(2, $event->getReminders());
     }
 
+    /** Rejouer sync() ne duplique rien : le cron peut repasser autant qu'il veut. */
     public function testSecondSyncChangesNothing(): void
     {
         $event = $this->makeEvent('2026-09-20');
@@ -51,6 +53,7 @@ class ReminderSchedulerTest extends TestCase
         $this->assertCount(2, $event->getReminders());
     }
 
+    /** Une échéance faite n'a plus rien à annoncer : ses rappels en attente sont purgés. */
     public function testDoneEventLosesItsReminders(): void
     {
         $event = $this->makeEvent('2026-09-20');
@@ -63,6 +66,7 @@ class ReminderSchedulerTest extends TestCase
         $this->assertCount(0, $event->getReminders());
     }
 
+    /** Décaler l'échéance remplace ses rappels par ceux de la nouvelle date. */
     public function testDateChangeReplacesReminders(): void
     {
         $event = $this->makeEvent('2026-09-20');
@@ -81,6 +85,7 @@ class ReminderSchedulerTest extends TestCase
         );
     }
 
+    /** Un rappel déjà parti reste en base même si la date change : c'est un fait passé. */
     public function testSentReminderSurvivesDateChange(): void
     {
         $event = $this->makeEvent('2026-09-20');
@@ -98,6 +103,7 @@ class ReminderSchedulerTest extends TestCase
         );
     }
 
+    /** Un rappel envoyé couvre sa date : pas de nouveau rappel, donc pas de second mail. */
     public function testSentReminderIsNotRecreated(): void
     {
         $event = $this->makeEvent('2026-09-20');
@@ -108,6 +114,22 @@ class ReminderSchedulerTest extends TestCase
 
         $this->assertSame(['created' => 0, 'removed' => 0], $report);
         $this->assertCount(2, $event->getReminders());
+    }
+
+    /** Le rappel part chez le propriétaire, pas chez qui a saisi l'échéance (un véto, demain). */
+    public function testSyncReminderIsToOwner(): void
+    {
+        $event = $this->makeEvent('2026-09-20');
+        $owner = $event->getAnimal()->getOwner();
+        // Un créateur distinct de l'owner : sinon le bon code et le bug donnent le même résultat.
+        $event->setCreatedBy(new User());
+
+        $this->scheduler->sync($event);
+
+        $this->assertCount(2, $event->getReminders());
+        foreach ($event->getReminders() as $reminder) {
+            $this->assertSame($owner, $reminder->getUser());
+        }
     }
 
     private function makeEvent(string $date): MedicalEvent
